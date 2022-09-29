@@ -393,7 +393,7 @@ class SubjectsTable(QtGui.QTableWidget):
         remove_button.setIcon(QtGui.QIcon("gui/icons/remove.svg"))
         ind = QtCore.QPersistentModelIndex(self.model().index(self.n_subjects, 2))
         remove_button.clicked.connect(lambda :self.remove_subject(ind.row()))
-        add_button = QtGui.QPushButton('add')
+        add_button = QtGui.QPushButton('   add   ')
         add_button.setIcon(QtGui.QIcon("gui/icons/add.svg"))
         add_button.clicked.connect(self.add_subject)
         run_checkbox = TableCheckbox()
@@ -597,7 +597,7 @@ class VariablesTable(QtGui.QTableWidget):
 
     def task_changed(self, task):
         '''Remove variables that are not defined in the new task.'''
-        pattern = "[\n\r]v\.(?P<vname>\w+)\s*\="
+        pattern = "[\n\r\.]v\.(?P<vname>\w+)\s*\="
         try:
             with open(os.path.join(dirs['tasks'], task+'.py'), "r") as file:
                 file_content = file.read()
