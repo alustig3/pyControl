@@ -26,9 +26,9 @@ v.red_count = 1
 
 v.current_count___ = 0
 
-v.custom_variables_dialog = "blinker_gui" # Use custom variable dialog that is defined in config/user_variable_dialogs/blinker_gui.json
+# v.custom_variables_dialog = "blinker_gui" # Use custom variable dialog that is defined in config/user_variable_dialogs/blinker_gui.json
 # v.custom_variables_dialog = 'blinker_gui_tabs' # comment above line and uncomment this line to see example dialog with tabs
-# v.custom_variables_dialog = 'blinker_gui_from_py' # comment above lines and uncomment this line to see example dialog that is loaded from a .py file
+v.custom_variables_dialog = 'blinker_gui_from_py' # comment above lines and uncomment this line to see example dialog that is loaded from a .py file
 
 # Define behaviour.
 def red_off(event):
@@ -98,3 +98,7 @@ def green_on(event):
 def run_end():  # Turn off hardware at end of run.
     red_LED.off()
     green_LED.off()
+
+def give_manual_reward():
+    # put reward dispense code here
+    print("This function was called from the GUI")
