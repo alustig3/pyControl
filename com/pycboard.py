@@ -1,11 +1,11 @@
 import os
-import sys
+import re
 import time
 import inspect
 from serial import SerialException
 from array import array
 from .pyboard import Pyboard, PyboardError
-from config.paths import dirs
+from gui.settings import VERSION, dirs, get_setting
 
 # ----------------------------------------------------------------------------------------
 #  Helper functions.
@@ -21,11 +21,6 @@ def _djb2_file(file_path):
                 break
             h = ((h << 5) + h + int.from_bytes(c,'little')) & 0xFFFFFFFF           
     return h
-
-# Used on pyboard to measure free space on filesystem.
-def _fs_free_space(drive='/flash'):
-    fs_stat = os.statvfs(drive)
-    return fs_stat[0] * fs_stat[3]
 
 # Used on pyboard for file transfer.
 def _receive_file(file_path, file_size):
@@ -44,7 +39,9 @@ def _receive_file(file_path, file_size):
                     bytes_remaining -= bytes_read
                     f.write(buf_mv[:bytes_read])
     except:
-        if _fs_free_space() < bytes_remaining:
+        fs_stat = os.statvfs('/flash')
+        fs_free_space = fs_stat[0] * fs_stat[3]
+        if fs_free_space < bytes_remaining:
             usb.write(b'NS') # Out of space.
         else:
             usb.write(b'ER')
@@ -57,12 +54,16 @@ class Pycboard(Pyboard):
     '''Pycontrol board inherits from Pyboard and adds functionality for file transfer
     and pyControl operations.
     '''
+    device_class2file = {} # Dict mapping device classes to the file in the devices folder where they are defined {device_class_name: device_file}
 
     def __init__(self, serial_port,  baudrate=115200, verbose=True, print_func=print, data_logger=None):
         self.serial_port = serial_port
         self.print = print_func        # Function used for print statements.
         self.data_logger = data_logger # Instance of Data_logger class for saving and printing data.
         self.status = {'serial': None, 'framework':None, 'usb_mode':None}
+        self.device_files_on_pyboard = {} # Dict {file_name:file_hash} of files in devices folder on pyboard.
+        if not Pycboard.device_class2file: # Scan devices folder to find files where device classes are defined.
+            self.make_device_class2file_map()
         try:    
             super().__init__(self.serial_port, baudrate=115200)
             self.status['serial'] = True
@@ -72,8 +73,8 @@ class Pycboard(Pyboard):
             "sys.implementation.version if hasattr(sys, 'implementation') else (0,0,0)").decode())
             self.micropython_version = float('{}.{}{}'.format(*v_tuple))
         except SerialException as e:
-            raise(e)
             self.status['serial'] = False
+            raise(e)
         if verbose: # Print status.
             if self.status['serial']:
                 self.print('\nMicropython version: {}'.format(self.micropython_version))
@@ -81,7 +82,10 @@ class Pycboard(Pyboard):
                 self.print('Error: Unable to open serial connection.')
                 return
             if self.status['framework']:
-                self.print('pyControl Framework: OK')
+                self.print(f'Framework version: {self.framework_version}')
+                if self.framework_version != VERSION:
+                    self.print('\nThe pyControl framework version on the board does not match the GUI version. '
+                               'It is recommended to reload the pyControl framework to the pyboard to ensure compatibility.')
             else:
                 if self.status['framework'] is None:
                     self.print('pyControl Framework: Not loaded')
@@ -94,7 +98,6 @@ class Pycboard(Pyboard):
         self.enter_raw_repl() # Soft resets pyboard.
         self.exec(inspect.getsource(_djb2_file))     # define djb2 hashing function.
         self.exec(inspect.getsource(_receive_file))  # define recieve file function.
-        self.exec(inspect.getsource(_fs_free_space)) # define file system free space function.
         self.exec('import os; import gc; import sys; import pyb')
         self.framework_running = False
         error_message = None
@@ -102,6 +105,7 @@ class Pycboard(Pyboard):
         try:
             self.exec('from pyControl import *; import devices')
             self.status['framework'] = True # Framework imported OK.
+            self.device_files_on_pyboard = self.get_folder_contents('devices', get_hash=True)
         except PyboardError as e:
             error_message = e.args[2].decode()
             if (("ImportError: no module named 'pyControl'" in error_message) or
@@ -109,6 +113,10 @@ class Pycboard(Pyboard):
                 self.status['framework'] = None # Framework not installed.
             else:
                 self.status['framework'] = False # Framework import error.
+        try:
+            self.framework_version = self.eval('fw.VERSION').decode()
+        except PyboardError:
+            self.framework_version = '<1.8'
         return error_message
 
     def hard_reset(self, reconnect=True):
@@ -213,25 +221,27 @@ class Pycboard(Pyboard):
 
 
     def transfer_folder(self, folder_path, target_folder=None, file_type='all',
-                        show_progress=False):
+                        files='all', remove_files=True, show_progress=False):
         '''Copy a folder into the root directory of the pyboard.  Folders that
         contain subfolders will not be copied successfully.  To copy only files of
-        a specific type, change the file_type argument to the file suffix (e.g. 'py').'''
+        a specific type, change the file_type argument to the file suffix (e.g. 'py').
+        To copy only specified files pass a list of file names as files argument.'''
         if not target_folder:
             target_folder = os.path.split(folder_path)[-1]
-        files = os.listdir(folder_path)
-        if file_type != 'all':
-            files = [f for f in files if f.split('.')[-1] == file_type]
+        if files == 'all':
+            files = os.listdir(folder_path)
+            if file_type != 'all':
+                files = [f for f in files if f.split('.')[-1] == file_type]
         try:
             self.exec('os.mkdir({})'.format(repr(target_folder)))
         except PyboardError:
-            # Folder already exists, remove any files not in sending folder.
-            target_files = eval(self.eval('os.listdir({})'.format(
-                repr(target_folder))).decode())
-            remove_files = list(set(target_files)-set(files))
-            for f in remove_files:
-                target_path = target_folder + '/' + f
-                self.remove_file(target_path)
+            # Folder already exists.
+            if remove_files: # Remove any files not in sending folder.
+                target_files = self.get_folder_contents(target_folder)
+                remove_files = list(set(target_files)-set(files))
+                for f in remove_files:
+                    target_path = target_folder + '/' + f
+                    self.remove_file(target_path)
         for f in files:
             file_path = os.path.join(folder_path, f)
             target_path = target_folder + '/' + f
@@ -241,17 +251,33 @@ class Pycboard(Pyboard):
 
     def remove_file(self, file_path):
         '''Remove a file from the pyboard.'''
-        self.exec('os.remove({})'.format(repr(file_path)))
+        try:
+            self.exec('os.remove({})'.format(repr(file_path)))
+        except PyboardError:
+            pass # File does not exist.
+
+    def get_folder_contents(self, folder_path, get_hash=False):
+        '''Get a list of the files in a folder on the pyboard, if
+        get_hash=True a dict {file_name:file_hash} is returned instead'''
+        file_list = eval(self.eval('os.listdir({})'.format(repr(folder_path))).decode())
+        if get_hash:
+            return {file_name: self.get_file_hash(folder_path+'/'+file_name)
+                    for file_name in file_list}
+        else:    
+            return file_list
   
     # ------------------------------------------------------------------------------------
     # pyControl operations.
     # ------------------------------------------------------------------------------------
 
     def load_framework(self):
-        '''Copy the pyControl framework folder to the board.'''
-        self.print('\nTransfering pyControl framework to pyboard.', end='')
+        '''Copy the pyControl framework folder to the board, reset the devices folder
+        on pyboard by removing all devices files, and rebuild the device_class2file dict.'''
+        self.print('\nTransferring pyControl framework to pyboard.', end='')
         self.transfer_folder(dirs['framework'], file_type='py', show_progress=True)
-        self.transfer_folder(dirs['devices']  , file_type='py', show_progress=True)
+        self.transfer_folder(dirs['devices'], files=['__init__.py'], remove_files=True, show_progress=True)
+        self.remove_file('hardware_definition.py')
+        self.make_device_class2file_map()
         error_message = self.reset()
         if not self.status['framework']:
             self.print('\nError importing framework:')
@@ -260,12 +286,12 @@ class Pycboard(Pyboard):
             self.print(' OK')
         return 
 
-    def load_hardware_definition(self, hwd_path=os.path.join(dirs['config'], 'hardware_definition.py')):
-        '''Transfer a hardware definition file to pyboard.  Defaults to transfering 
-        file hardware_definition.py from config folder.'''
+    def load_hardware_definition(self, hwd_path):
+        '''Transfer a hardware definition file to pyboard.'''
         if os.path.exists(hwd_path):
-            self.print('\nTransfering hardware definition to pyboard.', end='')
-            self.transfer_file(hwd_path, target_path = 'hardware_definition.py')
+            self.transfer_device_files(hwd_path)
+            self.print('\nTransferring hardware definition to pyboard.', end='')
+            self.transfer_file(hwd_path, target_path='hardware_definition.py')
             self.reset()
             try:
                 self.exec('import hardware_definition')
@@ -275,14 +301,60 @@ class Pycboard(Pyboard):
                 self.print('\n\nError importing hardware definition:\n')
                 self.print(error_message)
         else:
-            self.print('Hardware definition file not found.') 
+            self.print('Hardware definition file not found.')
+
+    def transfer_device_files(self, ref_file_path):
+        '''Transfer device driver files defining classes used in ref_file to the pyboard devices folder.
+        Driver file that are already on the pyboard are only transferred if they have changed
+        on the computer.'''
+        used_device_files = self._get_used_device_files(ref_file_path)
+        files_to_transfer = []
+        for device_file in used_device_files: # File not on pyboard.
+            if device_file not in self.device_files_on_pyboard.keys():
+                files_to_transfer.append(device_file)
+            else: 
+                file_hash = _djb2_file(os.path.join(dirs['devices'],device_file))
+                if file_hash != self.device_files_on_pyboard[device_file]: # File has changed.
+                    files_to_transfer.append(device_file)
+        if files_to_transfer:
+            self.print(f'\nTransfering device driver files {files_to_transfer} to pyboard', end='')
+            self.transfer_folder(dirs['devices'], files=files_to_transfer, remove_files=False, show_progress=True)
+            self.reset()
+            self.print(' OK')
+        
+    def _get_used_device_files(self, ref_file_path):
+        '''Return a list of device driver file names containing device classes used in ref_file'''
+        ref_file_name = os.path.split(ref_file_path)[-1]
+        with open(ref_file_path, 'r') as f:
+            file_content = f.read()
+        device_files = [device_file for device_class, device_file in Pycboard.device_class2file.items()
+                        if device_class in file_content and not ref_file_name == device_file]
+        # Add any device driver files containing classes used in device_files.
+        for device_file in device_files.copy():
+            device_files += self._get_used_device_files(os.path.join(dirs['devices'], device_file))
+        device_files = list(set(device_files)) # Remove duplicates.
+        return device_files
+
+    def make_device_class2file_map(self):
+        '''Make dict mapping device class names to file in devices folder containing 
+        the class definition.'''
+        Pycboard.device_class2file = {} # Dict {device_classname: device_filename}
+        all_device_files = [f for f in os.listdir(dirs['devices']) if f[-3:]=='.py']
+        for device_file in all_device_files:
+            with open(os.path.join(dirs['devices'],device_file), 'r') as f:
+                file_content = f.read()
+            pattern = "[\n\r]class\s*(?P<dcname>\w+)\s*\("
+            list(set([d_name for d_name in re.findall(pattern, file_content)]))
+            device_classes = list(set([device_class for device_class in re.findall(pattern, file_content)]))
+            for device_class in device_classes:
+                Pycboard.device_class2file[device_class] = device_file
 
     def setup_state_machine(self, sm_name, sm_dir=None, uploaded=False):
         '''Transfer state machine descriptor file sm_name.py from folder sm_dir
         to board. Instantiate state machine object as state_machine on pyboard.'''
         self.reset()
         if sm_dir is None:
-            sm_dir = dirs['tasks']
+            sm_dir = get_setting("folders","tasks")
         sm_path = os.path.join(sm_dir, sm_name + '.py')
         if uploaded:
             self.print('\nResetting task. ', end='')
@@ -290,12 +362,13 @@ class Pycboard(Pyboard):
             if not os.path.exists(sm_path):
                 self.print('Error: State machine file not found at: ' + sm_path)
                 raise PyboardError('State machine file not found at: ' + sm_path)
-            self.print('\nTransfering state machine {} to pyboard. '.format(sm_name), end='')
+            self.transfer_device_files(sm_path)
+            self.print('\nTransferring state machine {} to pyboard. '.format(sm_name), end='')
             self.transfer_file(sm_path, 'task_file.py')
         self.gc_collect()
         try:
-            self.exec('import task_file as smd')
-            self.exec('state_machine = sm.State_machine(smd)')
+            self.exec('import task_file')
+            self.exec('sm.setup_state_machine(task_file)')
             self.print('OK')
         except PyboardError as e:
             self.print('\n\nError: Unable to setup state machine.\n\n' + e.args[2].decode())
@@ -309,32 +382,34 @@ class Pycboard(Pyboard):
                         'events': events, # {name:ID}
                         'ID2name': {ID: name for name, ID in {**states, **events}.items()}, # {ID:name}
                         'analog_inputs': self.get_analog_inputs(), # {name: {'ID': ID, 'Fs':sampling rate}}
-                        'variables': self.get_variables()} # {name: repr(value)}
+                        'variables': self.get_variables(),
+                        'framework_version': self.framework_version,
+                        'micropython_version': self.micropython_version} # {name: repr(value)}
         if self.data_logger:
             self.data_logger.set_state_machine(self.sm_info)
 
     def get_states(self):
         '''Return states as a dictionary {state_name: state_ID}'''
-        return eval(self.exec('fw.get_states()').decode().strip())
+        return eval(self.eval('sm.states').decode())
 
     def get_events(self):
         '''Return events as a dictionary {event_name: state_ID}'''
-        return eval(self.exec('fw.get_events()').decode().strip())
+        return eval(self.eval('sm.events').decode())
 
     def get_variables(self):
         '''Return variables as a dictionary {variable_name: value}'''
-        return eval(self.exec('fw.get_variables()').decode().strip())
+        return eval(self.eval('{k: repr(v) for k, v in sm.variables.__dict__.items()}'))
 
     def get_analog_inputs(self):
         '''Return analog_inputs as a directory {input name: ID}'''
         return eval(self.exec('hw.get_analog_inputs()').decode().strip())
 
-    def start_framework(self, dur=None, data_output=True):
+    def start_framework(self, data_output=True):
         '''Start pyControl framwork running on pyboard.'''
         self.gc_collect()
         self.exec('fw.data_output = ' + repr(data_output))
         self.serial.reset_input_buffer()
-        self.exec_raw_no_follow('fw.run({})'.format(dur))
+        self.exec_raw_no_follow('fw.run()')
         self.framework_running = True
 
     def stop_framework(self):
@@ -429,8 +504,7 @@ class Pycboard(Pyboard):
             return None
         else: # Set variable using REPL.  
             checksum = sum(v_str.encode())
-            set_OK = eval(self.eval("state_machine._set_variable({}, {}, {})"
-                .format(repr(v_name), repr(v_str), checksum)).decode())
+            set_OK = eval(self.eval(f'sm.set_variable({repr(v_name)}, {repr(v_str)}, {checksum})').decode())
             if set_OK:
                 self.sm_info['variables'][v_name] = v_str
             return set_OK
@@ -447,5 +521,4 @@ class Pycboard(Pyboard):
             checksum = sum(data).to_bytes(2, 'little')
             self.serial.write(b'V' + data_len +  data + checksum)
         else: # Get variable using REPL.
-            return eval(self.eval("state_machine._get_variable({})"
-                                  .format(repr(v_name))).decode())
+            return eval(self.eval(f'sm.get_variable({repr(v_name)})').decode())

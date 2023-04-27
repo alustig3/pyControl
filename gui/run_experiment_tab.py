@@ -6,54 +6,53 @@ from datetime import datetime
 from collections import OrderedDict
 
 from concurrent.futures import ThreadPoolExecutor
-from pyqtgraph.Qt import QtGui, QtCore
+from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
 from serial import SerialException
 
-from config.gui_settings import  update_interval, log_font_size
-from config.paths import dirs
 from com.pycboard import Pycboard, PyboardError
 from com.data_logger import Data_logger
+from gui.settings import get_setting
 from gui.plotting import Experiment_plot
 from gui.dialogs import Variables_dialog, Summary_variables_dialog
 from gui.utility import variable_constants, TaskInfo
 from gui.custom_variables_dialog import Custom_variables_dialog
 
-class Run_experiment_tab(QtGui.QWidget):
+class Run_experiment_tab(QtWidgets.QWidget):
     '''The run experiment tab is responsible for setting up, running and stopping
     an experiment that has been defined using the configure experiments tab.'''
 
     def __init__(self, parent=None):
-        super(QtGui.QWidget, self).__init__(parent)
+        super(QtWidgets.QWidget, self).__init__(parent)
 
         self.GUI_main = self.parent()
         self.experiment_plot = Experiment_plot(self)
 
-        self.name_label = QtGui.QLabel('Experiment name:')
-        self.name_text  = QtGui.QLineEdit()
+        self.name_label = QtWidgets.QLabel('Experiment name:')
+        self.name_text  = QtWidgets.QLineEdit()
         self.name_text.setReadOnly(True)
-        self.plots_button =  QtGui.QPushButton('Show plots')
+        self.plots_button =  QtWidgets.QPushButton('Show plots')
         self.plots_button.setIcon(QtGui.QIcon("gui/icons/bar-graph.svg"))
         self.plots_button.clicked.connect(self.experiment_plot.show)
-        self.logs_button = QtGui.QPushButton('Hide logs')
+        self.logs_button = QtWidgets.QPushButton('Hide logs')
         self.logs_button.clicked.connect(self.show_hide_logs)
-        self.startstopclose_all_button = QtGui.QPushButton()
+        self.startstopclose_all_button = QtWidgets.QPushButton()
         self.startstopclose_all_button.clicked.connect(self.startstopclose_all)
 
-        self.Hlayout = QtGui.QHBoxLayout()
+        self.Hlayout = QtWidgets.QHBoxLayout()
         self.Hlayout.addWidget(self.name_label)
         self.Hlayout.addWidget(self.name_text)
         self.Hlayout.addWidget(self.logs_button)
         self.Hlayout.addWidget(self.plots_button)
         self.Hlayout.addWidget(self.startstopclose_all_button)
 
-        self.scroll_area = QtGui.QScrollArea(parent=self)
+        self.scroll_area = QtWidgets.QScrollArea(parent=self)
         self.scroll_area.horizontalScrollBar().setEnabled(False)
-        self.scroll_inner = QtGui.QFrame(self)
-        self.boxes_layout = QtGui.QVBoxLayout(self.scroll_inner)
+        self.scroll_inner = QtWidgets.QFrame(self)
+        self.boxes_layout = QtWidgets.QVBoxLayout(self.scroll_inner)
         self.scroll_area.setWidget(self.scroll_inner)
         self.scroll_area.setWidgetResizable(True)
 
-        self.Vlayout = QtGui.QVBoxLayout(self)
+        self.Vlayout = QtWidgets.QVBoxLayout(self)
         self.Vlayout.addLayout(self.Hlayout)
         self.Vlayout.addWidget(self.scroll_area)
 
@@ -202,16 +201,16 @@ class Run_experiment_tab(QtGui.QWidget):
             return
         # Hardware test.
         if experiment['hardware_test'] != 'no hardware test':
-            reply = QtGui.QMessageBox.question(self, 'Hardware test', 'Run hardware test?',
-                QtGui.QMessageBox.Yes | QtGui.QMessageBox.No)
-            if reply == QtGui.QMessageBox.Yes:
+            reply = QtWidgets.QMessageBox.question(self, 'Hardware test', 'Run hardware test?',
+                QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No)
+            if reply == QtWidgets.QMessageBox.StandardButton.Yes:
                 self.print_to_logs('\nStarting hardware test.')
                 self.thread_map(self.start_hardware_test)
                 if any(self.setup_failed):
                     self.abort_experiment()
                     return
-                QtGui.QMessageBox.question(self, 'Hardware test',
-                    'Press OK when finished with hardware test.', QtGui.QMessageBox.Ok)
+                QtWidgets.QMessageBox.question(self, 'Hardware test',
+                    'Press OK when finished with hardware test.', QtWidgets.QMessageBox.StandardButton.Ok)
                 for i, board in enumerate(self.boards):
                     try:
                         board.stop_framework()
@@ -232,7 +231,7 @@ class Run_experiment_tab(QtGui.QWidget):
             self.abort_experiment()
             return
         # Copy task file to experiments data folder.
-        self.boards[0].data_logger.copy_task_file(self.experiment['data_dir'], dirs['tasks'])
+        self.boards[0].data_logger.copy_task_file(self.experiment['data_dir'], get_setting("folders","tasks"))
         # Configure GUI ready to run.
         for subjectbox, board in zip(self.subjectboxes,self.boards):
             subjectbox.assign_board(board)
@@ -318,10 +317,10 @@ class Run_experiment_tab(QtGui.QWidget):
                 time.sleep(0.05)
                 board.process_data()
                 self.subjectboxes[i].stop_task()
-        msg = QtGui.QMessageBox()
+        msg = QtWidgets.QMessageBox()
         msg.setWindowTitle('Error')
         msg.setText('An error occured while setting up experiment')
-        msg.setIcon(QtGui.QMessageBox.Warning)
+        msg.setIcon(QtWidgets.QMessageBox.Icon.Warning)
         msg.exec()
         self.startstopclose_all_button.setText('Close Exp.')
         self.startstopclose_all_button.setEnabled(True)
@@ -373,12 +372,12 @@ class Run_experiment_tab(QtGui.QWidget):
 
 # -----------------------------------------------------------------------------
 
-class Subjectbox(QtGui.QGroupBox):
+class Subjectbox(QtWidgets.QGroupBox):
     '''Groupbox for displaying data from a single subject.'''
 
     def __init__(self, name, setup_number, parent=None):
 
-        super(QtGui.QGroupBox, self).__init__(name, parent=parent)
+        super(QtWidgets.QGroupBox, self).__init__(name, parent=parent)
         self.board = None # Overwritten with board once instantiated.
         self.GUI_main = self.parent().GUI_main
         self.run_exp_tab = self.parent()
@@ -387,53 +386,52 @@ class Subjectbox(QtGui.QGroupBox):
         self.print_queue = []
         self.delay_printing = False
 
-        self.start_stop_button = QtGui.QPushButton('Start')
+        self.start_stop_button = QtWidgets.QPushButton('Start')
         self.start_stop_button.setIcon(QtGui.QIcon("gui/icons/play.svg"))
         self.start_stop_button.setEnabled(False)
-        self.status_label = QtGui.QLabel('Status:')
-        self.status_text = QtGui.QLineEdit()
+        self.status_label = QtWidgets.QLabel('Status:')
+        self.status_text = QtWidgets.QLineEdit()
         self.status_text.setReadOnly(True)
-        self.status_text.setFixedWidth(60)
-        self.time_label = QtGui.QLabel('Time:')
-        self.time_text = QtGui.QLineEdit()
+        self.status_text.setFixedWidth(50)
+        self.time_label = QtWidgets.QLabel('Time:')
+        self.time_text = QtWidgets.QLineEdit()
         self.time_text.setReadOnly(True)
-        self.time_text.setFixedWidth(60)
+        self.time_text.setFixedWidth(50)
         self.task_info = TaskInfo()
-        self.task_info.state_text.setFixedWidth(140)
-        self.task_info.event_text.setFixedWidth(140)
-        self.variables_button = QtGui.QPushButton('Variables')
+        self.variables_button = QtWidgets.QPushButton('Variables')
         self.variables_button.setIcon(QtGui.QIcon("gui/icons/filter.svg"))
         self.variables_button.setEnabled(False)
-        self.log_textbox = QtGui.QTextEdit()
+        self.log_textbox = QtWidgets.QTextEdit()
         self.log_textbox.setMinimumHeight(180)
-        self.log_textbox.setFont(QtGui.QFont('Courier New',log_font_size))
+        self.log_textbox.setFont(QtGui.QFont('Courier New',get_setting("GUI","log_font_size")))
         self.log_textbox.setReadOnly(True)
 
-        self.Vlayout = QtGui.QVBoxLayout(self)
-        self.Hlayout = QtGui.QHBoxLayout()
-        self.Hlayout.addWidget(self.start_stop_button)
-        self.Hlayout.addWidget(self.variables_button)
-        self.Hlayout.addWidget(self.status_label)
-        self.Hlayout.addWidget(self.status_text)
-        self.Hlayout.addWidget(self.time_label)
-        self.Hlayout.addWidget(self.time_text)
-        self.Hlayout.addWidget(self.task_info.state_label)
-        self.Hlayout.addWidget(self.task_info.state_text)
-        self.Hlayout.addWidget(self.task_info.event_label)
-        self.Hlayout.addWidget(self.task_info.event_text)
-        self.Hlayout.addWidget(self.task_info.print_label)
-        self.Hlayout.addWidget(self.task_info.print_text)
-        self.Hlayout.setStretchFactor(self.task_info.print_text, 10)
-        self.Vlayout.addLayout(self.Hlayout)
+        self.Vlayout = QtWidgets.QVBoxLayout(self)
+        self.Hlayout1 = QtWidgets.QHBoxLayout()
+        self.Hlayout1.addWidget(self.start_stop_button)
+        self.Hlayout1.addWidget(self.variables_button)
+        self.Hlayout1.addWidget(self.status_label)
+        self.Hlayout1.addWidget(self.status_text)
+        self.Hlayout1.addWidget(self.time_label)
+        self.Hlayout1.addWidget(self.time_text)
+        self.Hlayout1.addWidget(self.task_info.state_label)
+        self.Hlayout1.addWidget(self.task_info.state_text)
+        self.Hlayout1.addWidget(self.task_info.event_label)
+        self.Hlayout1.addWidget(self.task_info.event_text)
+        self.Hlayout2 = QtWidgets.QHBoxLayout()
+        self.Hlayout2.addWidget(self.task_info.print_label)
+        self.Hlayout2.addWidget(self.task_info.print_text)
+        self.Vlayout.addLayout(self.Hlayout1)
+        self.Vlayout.addLayout(self.Hlayout2)
         self.Vlayout.addWidget(self.log_textbox)
 
     def print_to_log(self, print_string, end='\n'):
         if self.delay_printing:
             self.print_queue.append((print_string, end))
             return
-        self.log_textbox.moveCursor(QtGui.QTextCursor.End)
+        self.log_textbox.moveCursor(QtGui.QTextCursor.MoveOperation.End)
         self.log_textbox.insertPlainText(print_string+end)
-        self.log_textbox.moveCursor(QtGui.QTextCursor.End)
+        self.log_textbox.moveCursor(QtGui.QTextCursor.MoveOperation.End)
         self.GUI_main.app.processEvents()
 
     def start_delayed_print(self):
@@ -461,7 +459,7 @@ class Subjectbox(QtGui.QGroupBox):
                 self.variables_dialog = py_gui_file.Custom_variables_dialog(self, self.board)
 
 
-        self.variables_button.clicked.connect(self.variables_dialog.exec_)
+        self.variables_button.clicked.connect(self.variables_dialog.exec)
         self.variables_button.setEnabled(True)
         self.start_stop_button.clicked.connect(self.start_stop_task)
 
@@ -494,7 +492,7 @@ class Subjectbox(QtGui.QGroupBox):
         self.run_exp_tab.setups_started += 1
 
         self.run_exp_tab.GUI_main.refresh_timer.stop()
-        self.run_exp_tab.update_timer.start(update_interval)
+        self.run_exp_tab.update_timer.start(get_setting("plotting","update_interval"))
         self.run_exp_tab.update_startstopclose_button()
 
     def error(self):

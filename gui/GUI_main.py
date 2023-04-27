@@ -4,13 +4,13 @@ import ctypes
 import traceback
 import logging
 
+from pathlib import Path
 from serial.tools import list_ports
-from pyqtgraph.Qt import QtGui, QtCore
+from pyqtgraph.Qt import QtGui, QtCore, QtWidgets
 
-from config.paths import dirs
-from config.gui_settings import  VERSION, ui_font_size
+from gui.settings import VERSION, dirs, get_setting
 from gui.run_task_tab import Run_task_tab
-from gui.dialogs import Board_config_dialog, Keyboard_shortcuts_dialog, Paths_dialog
+from gui.dialogs import Board_config_dialog, Keyboard_shortcuts_dialog, Settings_dialog
 from gui.configure_experiment_tab import Configure_experiment_tab
 from gui.run_experiment_tab import Run_experiment_tab
 from gui.setups_tab import Setups_tab
@@ -22,11 +22,10 @@ if os.name == 'nt': # Needed on windows to get taskbar icon to display correctly
 # GUI_main
 # --------------------------------------------------------------------------------
 
-class GUI_main(QtGui.QMainWindow):
- 
-    def __init__(self):
+class GUI_main(QtWidgets.QMainWindow):
+    def __init__(self,app):
         super().__init__()
-        self.setWindowTitle('pyControl v{}'.format(VERSION))
+        self.setWindowTitle(f'pyControl v{VERSION}')
         self.setGeometry(10, 30, 700, 800) # Left, top, width, height.
 
         # Variables
@@ -37,22 +36,22 @@ class GUI_main(QtGui.QMainWindow):
         self.available_tasks_changed = False
         self.available_experiments_changed = False
         self.available_ports_changed = False
+        self.task_directory = get_setting("folders","tasks")
         self.data_dir_changed = False
         self.current_tab_ind = 0 # Which tab is currently selected.
-        self.app = None # Overwritten with QtGui.QApplication instance in main.
+        self.app = app
 
         # Dialogs.
-
         self.config_dialog = Board_config_dialog(parent=self)
         self.shortcuts_dialog = Keyboard_shortcuts_dialog(parent=self)
-        self.paths_dialog = Paths_dialog(parent=self)
+        self.settings_dialog = Settings_dialog(parent=self)
 
         # Widgets.
-        self.tab_widget = QtGui.QTabWidget(self)
+        self.tab_widget = QtWidgets.QTabWidget(self)
         self.setCentralWidget(self.tab_widget)
 
-        self.run_task_tab = Run_task_tab(self)  
-        self.experiments_tab = QtGui.QStackedWidget(self)
+        self.run_task_tab = Run_task_tab(self)
+        self.experiments_tab = QtWidgets.QStackedWidget(self)
         self.setups_tab = Setups_tab(self)
 
         self.configure_experiment_tab = Configure_experiment_tab(self)
@@ -65,10 +64,9 @@ class GUI_main(QtGui.QMainWindow):
         self.tab_widget.addTab(self.experiments_tab,'Experiments')
         self.tab_widget.addTab(self.setups_tab, 'Setups')
 
-        self.tab_widget.currentChanged.connect(self.tab_changed) 
+        self.tab_widget.currentChanged.connect(self.tab_changed)
 
         # Timers
-
         self.refresh_timer = QtCore.QTimer() # Timer to regularly call refresh() when not running.
         self.refresh_timer.timeout.connect(self.refresh)
         self.refresh_timer.start(self.refresh_interval)
@@ -93,9 +91,9 @@ class GUI_main(QtGui.QMainWindow):
         ## --------Settings menu--------
         settings_menu = main_menu.addMenu('Settings')
         # Folder paths
-        paths_action = QtGui.QAction("&Folder paths", self)
-        paths_action.triggered.connect(self.paths_dialog.exec)
-        settings_menu.addAction(paths_action)
+        settings_action = QtGui.QAction("&Edit settings", self)
+        settings_action.triggered.connect(self.settings_dialog.exec)
+        settings_menu.addAction(settings_action)
         # ---------Help menu----------
         help_menu= main_menu.addMenu('Help')
         # Go to readthedocs
@@ -119,13 +117,14 @@ class GUI_main(QtGui.QMainWindow):
         shortcuts_action.setIcon(QtGui.QIcon("gui/icons/keyboard.svg"))
         help_menu.addAction(shortcuts_action)
 
+        self.pcx2json()
         self.show()
 
     def go_to_data(self):
-        QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(dirs['data']))
+        QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(get_setting("folders","data")))
 
     def go_to_tasks(self):
-        QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(dirs['tasks']))
+        QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(get_setting("folders","tasks")))
 
     def view_docs(self):
         QtGui.QDesktopServices.openUrl(QtCore.QUrl("https://pycontrol.readthedocs.io/en/latest/"))
@@ -140,28 +139,37 @@ class GUI_main(QtGui.QMainWindow):
         '''Return list of .py files in tasks folder and subfolders in format:
         subdir_1/subdir_2/task_file_name.py'''
         task_files = []
-        for (dirpath, dirnames, filenames) in os.walk(dirs['tasks']):
-            task_files += [os.path.join(dirpath, file).split(dirs['tasks'])[1][1:-3]
+        # this function gets called every second. Normally we would use get_setting("folder","tasks")
+        # but there is no need to constantly be rereading the user_settings.json file that isn't changing
+        # so we use this self.task_directory variable that is only updated when a new user settting is saved
+        for (dirpath, dirnames, filenames) in os.walk(self.task_directory):
+            task_files += [os.path.join(dirpath, file).split(self.task_directory)[1][1:-3]
                            for file in filenames if file.endswith('.py')]
         return task_files
+
+    def pcx2json(self):
+        """Converts legacy .pcx files to .json files"""
+        exp_dir = Path(dirs['experiments'])
+        for f in exp_dir.glob('*.pcx'):
+            f.rename(f.with_suffix('.json'))
 
     def refresh(self):
         '''Called regularly when framework not running.'''
         # Scan task folder.
         tasks = self.get_task_file_list()
         self.available_tasks_changed = tasks != self.available_tasks
-        if self.available_tasks_changed:    
+        if self.available_tasks_changed:
             self.available_tasks = tasks
         # Scan experiments folder.
-        experiments = [t.split('.')[0] for t in os.listdir(dirs['experiments']) if t[-4:] == '.pcx']
+        experiments = [exp_file.stem for exp_file in Path(dirs['experiments']).glob('*.json')]
         self.available_experiments_changed = experiments != self.available_experiments
-        if self.available_experiments_changed:    
+        if self.available_experiments_changed:
             self.available_experiments = experiments
         # Scan serial ports.
         ports = set([c[0] for c in list_ports.comports()
                      if ('Pyboard' in c[1]) or ('USB Serial Device' in c[1])])
         self.available_ports_changed = ports != self.available_ports
-        if self.available_ports_changed:    
+        if self.available_ports_changed:
             self.available_ports = ports
         # Refresh tabs.
         self.run_task_tab.refresh()
@@ -172,7 +180,7 @@ class GUI_main(QtGui.QMainWindow):
 
     def tab_changed(self, new_tab_ind):
         '''Called whenever the active tab is changed.'''
-        if self.current_tab_ind == 0: 
+        if self.current_tab_ind == 0:
             self.run_task_tab.disconnect()
         elif self.current_tab_ind == 2:
             self.setups_tab.disconnect()
@@ -183,7 +191,7 @@ class GUI_main(QtGui.QMainWindow):
     def excepthook(self, ex_type, ex_value, ex_traceback):
         '''Called whenever an uncaught exception occurs.'''
         if hasattr(self.tab_widget.currentWidget(), 'excepthook'):
-           self.tab_widget.currentWidget().excepthook(ex_type, ex_value, ex_traceback)
+            self.tab_widget.currentWidget().excepthook(ex_type, ex_value, ex_traceback)
         logging.error(''.join(traceback.format_exception(ex_type, ex_value, ex_traceback)))
 
 # --------------------------------------------------------------------------------
@@ -192,13 +200,12 @@ class GUI_main(QtGui.QMainWindow):
 
 def launch_GUI():
     '''Launch the pyControl GUI.'''
-    app = QtGui.QApplication(sys.argv)
+    app = QtWidgets.QApplication(sys.argv)
     app.setStyle('Fusion')
     app.setWindowIcon(QtGui.QIcon("gui/icons/logo.svg"))
     font = QtGui.QFont()
-    font.setPixelSize(ui_font_size)
+    font.setPixelSize(get_setting("GUI","ui_font_size"))
     app.setFont(font)
-    gui_main = GUI_main()
-    gui_main.app = app # To allow app functions to be called from GUI.
+    gui_main = GUI_main(app)
     sys.excepthook = gui_main.excepthook
-    sys.exit(app.exec_())
+    sys.exit(app.exec())

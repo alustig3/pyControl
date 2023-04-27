@@ -1,5 +1,60 @@
 -------------------------------------------------------------------------------
-Version 1.7.2 30/06/2022
+Version 1.8.1 2023-02-21
+-------------------------------------------------------------------------------
+
+Framework:
+
+- Fixed bug where audio output and rotary encoder could not be used together.
+ 
+-------------------------------------------------------------------------------
+Version 1.8 2022-11-08
+-------------------------------------------------------------------------------
+
+GUI:
+
+- GUI is now compatible with PyQt 6 and Python 3.10.
+
+- New GUI settings dialog.
+
+- Required device driver files are now automatically transferred to the pyboard
+  when a task or hardware definition is uploaded.
+
+- Hardware definition files are now stored in a hardware_definitions folder
+  not the generic config folder.
+
+- pyboards can how be hidden so they do not show up in board select GUI menus 
+  by naming them _hidden_ in the setups tab.
+
+- Various small improvements and bug fixes.
+
+Framework:
+
+- Major refactoring of framework code to make it simpler and more readable.
+
+- Analog inputs now stream data to the computer continously while the framework
+  is running rather than having record() and stop() methods to start and stop
+  data streaming.  
+
+- Events triggered by timers are now output to the data log by default.
+
+- Removed decimate argument from digital input as it was not used in practice.
+
+- Added Frame_trigger device class for triggering camera frames as a specified
+  frequency and recording the frame times to an analog data file.
+
+- Added uRFID device class for controlling Priority 1 Designs RFID module.
+
+- Added print_variables function for printing variable values to the data
+  log as a json formatted string.
+
+Data import:
+
+- Added session_dataframe() function for generating a pandas dataframe from 
+  a pyControl data file and experiment_dataframe() for generating a pandas
+  dataframe from an experiment data folder.
+
+-------------------------------------------------------------------------------
+Version 1.7.2 2022-06-30
 -------------------------------------------------------------------------------
 
 GUI:
@@ -14,7 +69,7 @@ GUI:
   if named imports were used in the task file.
 
 -------------------------------------------------------------------------------
-Version 1.7.1 20/04/2022
+Version 1.7.1 2022-04-20
 -------------------------------------------------------------------------------
 
 GUI:
@@ -22,7 +77,7 @@ GUI:
 - Bug fix and improvements in custom variables dialog editor.
 
 -------------------------------------------------------------------------------
-Version 1.7 06/04/2022
+Version 1.7 2022-04-06
 -------------------------------------------------------------------------------
 
 GUI:
@@ -36,7 +91,7 @@ Tools:
   the units pulse times are measured in.
 
 -------------------------------------------------------------------------------
-Version 1.6.2 23/12/2021
+Version 1.6.2 2021-12-23
 -------------------------------------------------------------------------------
 
 Framework:
@@ -50,7 +105,7 @@ Framework:
   rather than * imports has been added for comparison of the two import methods.
 
 -------------------------------------------------------------------------------
-Version 1.6.1 22/11/2021
+Version 1.6.1 2021-11-22
 -------------------------------------------------------------------------------
 
 GUI:
@@ -69,7 +124,7 @@ GUI:
 - Various minor bug fixes.
 
 -------------------------------------------------------------------------------
-Version 1.6 25/11/2020
+Version 1.6 2020-11-25
 -------------------------------------------------------------------------------
 
 GUI:
@@ -90,7 +145,7 @@ GUI:
 - Various minor bug fixes.
 
 -------------------------------------------------------------------------------
-Version 1.5 11/02/2020
+Version 1.5 2020-02-11
 -------------------------------------------------------------------------------
 
 GUI:
@@ -139,7 +194,7 @@ CLI
 - Removed command line interface.
 
 -------------------------------------------------------------------------------
-Version 1.4 03/02/2019
+Version 1.4 2019-02-03
 -------------------------------------------------------------------------------
 
 GUI:
@@ -151,7 +206,7 @@ Tools:
   - Added session_plot module for visualing sessions offline.
 
 -------------------------------------------------------------------------------
-Version 1.3.3 12/12/2018
+Version 1.3.3 2018-12-12
 -------------------------------------------------------------------------------
 
 GUI:
@@ -172,7 +227,7 @@ Tools:
 - Improved rsync alignment code and added documentation for synchronisation.
 
 -------------------------------------------------------------------------------
-Version 1.3.2 27/07/2018
+Version 1.3.2 2018-07-27
 -------------------------------------------------------------------------------
 
 CLI/GUI:
@@ -185,7 +240,7 @@ Tools:
 - Added Rsync alignment code
 
 -------------------------------------------------------------------------------
-Version 1.3.2 27/07/2018
+Version 1.3.2 2018-07-27
 -------------------------------------------------------------------------------
 
 CLI/GUI:
@@ -198,7 +253,7 @@ Tools:
 - Added Rsync alignment code
 
 -------------------------------------------------------------------------------
-Version 1.3.1 16/05/2018
+Version 1.3.1 2018-05-16
 -------------------------------------------------------------------------------
 
 GUI:
@@ -208,7 +263,7 @@ Framework:
 - Added Audio_player device driver.
 
 -------------------------------------------------------------------------------
-Version 1.3 16/04/2018
+Version 1.3 2018-04-16
 -------------------------------------------------------------------------------
 
 GUI:
@@ -228,7 +283,7 @@ Framework:
 - Setting / getting variables modifed to work while framework running.
 
 -------------------------------------------------------------------------------
-Version 1.2.1 29/03/2018
+Version 1.2.1 2018-03-29
 -------------------------------------------------------------------------------
 
 CLI: 
@@ -239,7 +294,7 @@ Framework:
 - Fixed incorrect pin ID for Breakout_1_2 BNC_2.
 
 -------------------------------------------------------------------------------
-Version 1.2  31/01/2018
+Version 1.2  2018-01-31
 -------------------------------------------------------------------------------
 
 CLI:
@@ -255,7 +310,7 @@ Framework:
 - Added MCP23017 device driver.
 
 -------------------------------------------------------------------------------
-Version 1.1.4 21/12/2017
+Version 1.1.4 2017-12-21
 -------------------------------------------------------------------------------
 
 Framework:
@@ -270,7 +325,7 @@ Bug fixes:
 
 
 -------------------------------------------------------------------------------
-Version 1.1.3 28/07/2017
+Version 1.1.3 2017-07-28
 -------------------------------------------------------------------------------
 
 - Added data_import.py, a module for importing pyControl sessions and experiments
@@ -288,7 +343,7 @@ Bug fixes:
 - Fixed import problem which could prevent run_experiment from running.
 
 -------------------------------------------------------------------------------
-Version 1.1.2 08/05/2017
+Version 1.1.2 2017-05-08
 -------------------------------------------------------------------------------
 
 Framework:
@@ -314,7 +369,7 @@ Bug fixes:
 - Print output from run_end() now saved by run experiment.
 
 -------------------------------------------------------------------------------
-Version 1.1 06/02/2017
+Version 1.1 2017-02-06
 -------------------------------------------------------------------------------
 
 Framework:
@@ -324,6 +379,8 @@ CLI:
 - Added run_task.py, a script for configuring and running tasks on 
   individual pyboards.
 
-Version 1.0 30/12/2016
+-------------------------------------------------------------------------------
+Version 1.0 2016-12-30
+-------------------------------------------------------------------------------
 
 - Initial release of pyControl CLI

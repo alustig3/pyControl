@@ -1,32 +1,30 @@
 import time
-import numpy as np
 from datetime import timedelta
+import numpy as np
 import pyqtgraph as pg
-from pyqtgraph.Qt import QtGui
-from PyQt5.QtCore import Qt
+from pyqtgraph.Qt import QtGui,QtWidgets,QtCore
 
-from config.gui_settings import event_history_len, state_history_len, analog_history_dur
+from gui.settings import get_setting
 from gui.utility import detachableTabWidget
 
 # ----------------------------------------------------------------------------------------
-# Task_plot 
+# Task_plot
 # ----------------------------------------------------------------------------------------
 
-class Task_plot(QtGui.QWidget):
+class Task_plot(QtWidgets.QWidget):
     ''' Widget for plotting the states, events and analog inputs output by a state machine.'''
 
     def __init__(self, parent=None):
-        super(QtGui.QWidget, self).__init__(parent)
+        super(QtWidgets.QWidget, self).__init__(parent)
 
         # Create widgets
-
-        self.states_plot = States_plot(self, data_len=state_history_len)
-        self.events_plot = Events_plot(self, data_len=event_history_len)
-        self.analog_plot = Analog_plot(self, data_dur=analog_history_dur)
+        self.states_plot = States_plot(self, data_len = get_setting("plotting","state_history_len"))
+        self.events_plot = Events_plot(self, data_len = get_setting("plotting","event_history_len"))
+        self.analog_plot = Analog_plot(self, data_dur = get_setting("plotting","analog_history_dur"))
         self.run_clock   = Run_clock(self.states_plot.axis)
 
         # Setup plots
-        self.pause_button = QtGui.QPushButton('Pause plots')
+        self.pause_button = QtWidgets.QPushButton()
         self.pause_button.setEnabled(False)
         self.pause_button.setCheckable(True)
         self.events_plot.axis.setXLink(self.states_plot.axis)
@@ -35,20 +33,22 @@ class Task_plot(QtGui.QWidget):
 
         # create layout
 
-        self.vertical_layout = QtGui.QGridLayout()
+        self.vertical_layout = QtWidgets.QGridLayout()
         self.vertical_layout.addWidget(self.states_plot.axis,0,0,1,3)
         self.vertical_layout.addWidget(self.events_plot.axis,1,0,1,3)
         self.vertical_layout.addWidget(self.analog_plot.axis,2,0,1,3)
-        self.vertical_layout.addWidget(self.pause_button,3,0,1,3,Qt.AlignCenter)
+        self.vertical_layout.addWidget(self.pause_button,3,0,1,3,QtCore.Qt.AlignmentFlag.AlignCenter)
         self.setLayout(self.vertical_layout)
+
+        self.pause_button.clicked.connect(self.update_pause_btn_text)
+        self.update_pause_btn_text()
 
     def set_state_machine(self, sm_info):
         # Initialise plots with state machine information.
         self.states_plot.set_state_machine(sm_info)
         self.events_plot.set_state_machine(sm_info)
         self.analog_plot.set_state_machine(sm_info)
-
-        if sm_info['analog_inputs']:
+        if self.analog_plot.inputs:
             self.analog_plot.axis.setVisible(True)
             self.events_plot.axis.getAxis('bottom').setLabel('')
         else:
@@ -58,6 +58,7 @@ class Task_plot(QtGui.QWidget):
     def run_start(self, recording):
         self.pause_button.setChecked(False)
         self.pause_button.setEnabled(True)
+        self.update_pause_btn_text()
         self.start_time = time.time()
         self.states_plot.run_start()
         self.events_plot.run_start()
@@ -83,6 +84,14 @@ class Task_plot(QtGui.QWidget):
             self.events_plot.update(run_time)
             self.analog_plot.update(run_time)
             self.run_clock.update(run_time)
+
+    def update_pause_btn_text(self):
+        if self.pause_button.isChecked():
+            self.pause_button.setText("Resume plotting")
+            self.pause_button.setIcon(QtGui.QIcon("gui/icons/play.svg"))
+        else:
+            self.pause_button.setText("Pause plotting")
+            self.pause_button.setIcon(QtGui.QIcon("gui/icons/pause.svg"))
 
 
 # States_plot --------------------------------------------------------
@@ -125,7 +134,7 @@ class States_plot():
                 timestamp, ID = ns[1:]
                 j = 2*(-n_new+i)  # Index of state entry in self.data
                 self.data[j-1:,0] = timestamp
-                self.data[j:  ,1] = ID  
+                self.data[j:  ,1] = ID
 
     def update(self, run_time):
         '''Update plots.'''
@@ -199,16 +208,16 @@ class Analog_plot():
         self.axis.setLimits(xMax=0)
 
     def set_state_machine(self, sm_info):
-        self.inputs = sm_info['analog_inputs']
+        self.inputs = {ID: ai for ID,ai in sm_info['analog_inputs'].items() if ai['plot']}
         if not self.inputs: return # State machine may not have analog inputs.
         self.axis.clear()
         self.legend = self.axis.addLegend(offset=(10, 10))
-        self.plots = {ai['ID']: self.axis.plot(name=name, 
-                      pen=pg.mkPen(pg.intColor(ai['ID'],len(self.inputs)))) for name, ai in sorted(self.inputs.items())}
+        self.plots = {ai['ID']: self.axis.plot(name=name, pen=pg.mkPen(pg.intColor(i,len(self.inputs))))
+                      for i, (name, ai) in enumerate(sorted(self.inputs.items()))}
         self.axis.getAxis('bottom').setLabel('Time (seconds)')
         max_len = max([len(n) for n in list(sm_info['states'])+list(sm_info['events'])])
         self.axis.getAxis('right').setWidth(5*max_len)
-        
+
     def run_start(self):
         if not self.inputs: return # State machine may not have analog inputs.
         for plot in self.plots.values():
@@ -242,12 +251,12 @@ class Run_clock():
 
     def __init__(self, axis):
         self.clock_text = pg.TextItem(text='')
-        self.clock_text.setFont(QtGui.QFont('arial',11, QtGui.QFont.Bold))
+        self.clock_text.setFont(QtGui.QFont('arial',11, QtGui.QFont.Weight.Bold))
         axis.getViewBox().addItem(self.clock_text, ignoreBounds=True)
         self.clock_text.setParentItem(axis.getViewBox())
         self.clock_text.setPos(10,-5)
         self.recording_text = pg.TextItem(text='', color=(255,0,0))
-        self.recording_text.setFont(QtGui.QFont('arial',12,QtGui.QFont.Bold))
+        self.recording_text.setFont(QtGui.QFont('arial',12,QtGui.QFont.Weight.Bold))
         axis.getViewBox().addItem(self.recording_text, ignoreBounds=True)
         self.recording_text.setParentItem(axis.getViewBox())
         self.recording_text.setPos(80,-5)
@@ -266,14 +275,14 @@ class Run_clock():
 # Experiment plotter
 # --------------------------------------------------------------------------------
 
-class Experiment_plot(QtGui.QMainWindow):
+class Experiment_plot(QtWidgets.QMainWindow):
     '''Window for plotting data during experiment run where each subjects plots
     are displayed in a seperate tab.'''
 
     def __init__(self, parent=None):
-        super(QtGui.QWidget, self).__init__(parent)
+        super(QtWidgets.QWidget, self).__init__(parent)
         self.setWindowTitle('Experiment plot')
-        self.setGeometry(720, 30, 700, 800) # Left, top, width, height.       
+        self.setGeometry(720, 30, 700, 800) # Left, top, width, height.
         self.subject_tabs = detachableTabWidget(self)
         self.setCentralWidget(self.subject_tabs)
         self.subject_plots = []
@@ -286,8 +295,7 @@ class Experiment_plot(QtGui.QMainWindow):
         subjects.sort(key=lambda s: experiment['subjects'][s]['setup'])
         for subject in subjects:
             self.subject_plots.append(Task_plot(self))
-            self.subject_tabs.addTab(self.subject_plots[-1],
-                '{} : {}'.format(subject_dict[subject]['setup'], subject))
+            self.subject_tabs.addTab(self.subject_plots[-1], f"{subject_dict[subject]['setup']} : {subject}")
 
     def set_state_machine(self, sm_info):
         '''Provide the task plotters with the state machine info.'''
@@ -301,11 +309,12 @@ class Experiment_plot(QtGui.QMainWindow):
     def close_experiment(self):
         '''Remove and delete all subject plot tabs.'''
         while len(self.subject_plots) > 0:
-            subject_plot = self.subject_plots.pop() 
+            subject_plot = self.subject_plots.pop()
             subject_plot.setParent(None)
             subject_plot.deleteLater()
+        self.subject_tabs.closeDetachedTabs()
         self.close()
-        
+
     def update(self):
         '''Update the plots of the active tab.'''
         for i,subject_plot in enumerate(self.subject_plots):
