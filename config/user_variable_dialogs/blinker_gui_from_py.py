@@ -37,12 +37,6 @@ class Variables_gui(QtWidgets.QWidget):
         layout = QtWidgets.QGridLayout()
         row = 0
 
-        # manual reward button
-        give_reward_btn = QtWidgets.QPushButton("Give reward manually")
-        give_reward_btn.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
-        layout.addWidget(give_reward_btn, row, 0)
-        row += 1
-
         # blink rate controls
         self.blink_rate = Slider_var(init_vars, "⏱️ <b>Blink Rate</b>", 1, 15, 0.5, "blink_rate")
         self.blink_rate.setSuffix(" Hz")
@@ -129,7 +123,6 @@ class Variables_gui(QtWidgets.QWidget):
         grid_layout.addWidget(widget, 0, 0, QtCore.Qt.AlignmentFlag.AlignLeft)
 
         # connect some buttons to functions
-        give_reward_btn.clicked.connect(self.send_reward_command)
         self.min_btn.clicked.connect(self.slide_to_min)
         self.mid_btn.clicked.connect(self.slide_to_mid)
         self.max_btn.clicked.connect(self.slide_to_max)
@@ -167,7 +160,3 @@ class Variables_gui(QtWidgets.QWidget):
         self.blink_rate.slider.setValue(15)
         self.blink_rate.update_val_lbl()
         self.blink_rate.set()
-
-    def send_reward_command(self):
-        if self.board.framework_running:
-            self.board.send_reward_msg_to_pyboard()
