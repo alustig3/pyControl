@@ -6,7 +6,7 @@ from devices import *
 
 # Define hardware (normally done in seperate hardware definition file).
 
-blue_LED = Digital_output("B4")
+blue_LED = Digital_output("LED_BLUE", inverted=True)
 
 # States and events.
 
